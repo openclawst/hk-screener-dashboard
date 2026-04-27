@@ -3,9 +3,9 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer
 } from 'recharts';
-import { RefreshCw, TrendingUp, TrendingDown, Activity, Filter } from 'lucide-react';
-import type { Stock, ScreenerResponse, SignalsResponse, RSRankingResponse } from './types';
-import { fetchScreener, fetchSignals, fetchRSRanking } from './api';
+import { RefreshCw, TrendingUp, TrendingDown, Activity, Filter, Search } from 'lucide-react';
+import type { Stock, ScreenerResponse, SignalsResponse, RSRankingResponse, USRSRankingResponse, USStock, RSStock } from './types';
+import { fetchScreener, fetchSignals, fetchRSRanking, fetchUSRSRanking } from './api';
 import { formatNumber, fmtTurnover } from './utils';
 
 // ── 子元件 ────────────────────────────────────────────────────
@@ -44,7 +44,6 @@ function VolBar({ ratio }: { ratio: number }) {
 
 function StockRow({ stock, rank }: { stock: Stock; rank: number }) {
   const [expanded, setExpanded] = useState(false);
-
   return (
     <tr
       className={`border-b border-gray-800 hover:bg-gray-800/50 transition-colors cursor-pointer ${rank <= 3 ? 'bg-amber-500/5' : ''}`}
@@ -218,6 +217,97 @@ function FilterBar({ config, onConfig }: {
   );
 }
 
+// ── RS Rating 共用元件 ────────────────────────────────────────
+
+function RSRatingBadge({ rating }: { rating: number }) {
+  return (
+    <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-bold
+      ${rating >= 90 ? 'bg-amber-500/30 text-amber-300 border border-amber-500/50' :
+        rating >= 80 ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' :
+        rating >= 70 ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40' :
+        rating >= 50 ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' :
+        'bg-gray-700/50 text-gray-400 border border-gray-600/30'}`}>
+      {rating}
+    </span>
+  );
+}
+
+// Search + Filter Bar（RS Tab 共用）
+function RSFilterBar({ search, onSearch, minRating, onMinRating, sortBy, onSortBy }: {
+  search: string;
+  onSearch: (v: string) => void;
+  minRating: number;
+  onMinRating: (v: number) => void;
+  sortBy: string;
+  onSortBy: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 p-3 bg-gray-800/40 border border-gray-700/50 rounded-xl">
+      <div className="flex items-center gap-2 bg-gray-900 rounded-lg px-3 py-1.5 flex-1 min-w-[200px]">
+        <Search size={14} className="text-gray-500 shrink-0" />
+        <input
+          type="text"
+          value={search}
+          onChange={e => onSearch(e.target.value)}
+          placeholder="搜尋代碼或名稱..."
+          className="bg-transparent text-gray-200 text-sm outline-none w-full placeholder-gray-600"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <Filter size={13} className="text-gray-500" />
+        <span className="text-xs text-gray-500">RS Rating</span>
+        {[0, 30, 50, 70, 90].map(v => (
+          <button key={v} onClick={() => onMinRating(v)}
+            className={`px-2 py-1 rounded text-xs font-medium transition-colors ${minRating === v ? 'bg-cyan-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
+            {v === 0 ? '全部' : `${v}+`}
+          </button>
+        ))}
+      </div>
+      <div className="h-4 w-px bg-gray-700" />
+      <select value={sortBy} onChange={e => onSortBy(e.target.value)}
+        className="bg-gray-700 text-gray-300 text-xs rounded px-2 py-1 border border-gray-600 outline-none">
+        <option value="rs_rating">按 RS Rating</option>
+        <option value="roc_3m">按 3M ROC</option>
+        <option value="roc_6m">按 6M ROC</option>
+        <option value="roc_12m">按 12M ROC</option>
+        <option value="change">按今日漲跌</option>
+      </select>
+    </div>
+  );
+}
+
+// RS 圖表
+function RSChart({ data, color, label }: { data: Array<{ name: string; rating: number; change: number }>; color: string; label: string }) {
+  if (!data.length) return null;
+  const gradId = color === '#3b82f6' ? 'usRsGrad' : 'rsGrad';
+  return (
+    <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4">
+      <div className="text-sm font-semibold text-gray-300 mb-3">{label}（Top 30）</div>
+      <ResponsiveContainer width="100%" height={180}>
+        <AreaChart data={data.slice(0, 30)} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+          <defs>
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={color} stopOpacity={0.4} />
+              <stop offset="95%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#6b7280' }} interval={0} angle={-30} textAnchor="end" />
+          <YAxis domain={[0, 99]} tick={{ fontSize: 10, fill: '#6b7280' }} />
+          <Tooltip
+            contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }}
+            labelStyle={{ color: '#9ca3af' }}
+            formatter={(v: any, n: any) => [
+              n === 'rating' ? `${v} 分` : `${Number(v).toFixed(2)}%`,
+              n === 'rating' ? 'RS Rating' : '今日漲跌'
+            ]}
+          />
+          <Area type="monotone" dataKey="rating" stroke={color} fill={`url(#${gradId})`} strokeWidth={2} name="rating" />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 // ── 主元件 ────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -227,17 +317,29 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [filters, setFilters] = useState({ minScore: 0, signals: [] as string[], sortBy: 'score' });
-  const [activeTab, setActiveTab] = useState<'screener' | 'signals' | 'rs'>('screener');
+  const [activeTab, setActiveTab] = useState<'screener' | 'signals' | 'rs' | 'us_rs'>('screener');
   const [rsData, setRsData] = useState<RSRankingResponse | null>(null);
+  const [usRsData, setUsRsData] = useState<USRSRankingResponse | null>(null);
+
+  // RS filter state
+  const [hkSearch, setHkSearch] = useState('');
+  const [hkMinRating, setHkMinRating] = useState(0);
+  const [hkSort, setHkSort] = useState('rs_rating');
+  const [usSearch, setUsSearch] = useState('');
+  const [usMinRating, setUsMinRating] = useState(0);
+  const [usSort, setUsSort] = useState('rs_rating');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [res, sigRes, rsRes] = await Promise.all([fetchScreener(), fetchSignals(), fetchRSRanking()]);
+      const [res, sigRes, rsRes, usRsRes] = await Promise.all([
+        fetchScreener(), fetchSignals(), fetchRSRanking(), fetchUSRSRanking()
+      ]);
       setData(res);
       setSignalsData(sigRes);
       setRsData(rsRes);
+      setUsRsData(usRsRes);
       setLastUpdate(new Date());
     } catch (e: any) {
       setError(e.message);
@@ -254,6 +356,23 @@ export default function Dashboard() {
     .sort((a, b) => (b as any)[filters.sortBy] - (a as any)[filters.sortBy])
     : [];
 
+  // RS filter helper
+  const applyRSFilter = useCallback((stocks: Array<RSStock | USStock>, search: string, minRating: number, sortBy: string) => {
+    const q = search.toLowerCase();
+    return (stocks as any[]).filter(s => {
+      if (minRating > 0 && s.rs_rating < minRating) return false;
+      if (search && !s.code.toLowerCase().includes(q) && !s.name.toLowerCase().includes(q)) return false;
+      return true;
+    }).sort((a, b) => {
+      const av = (a as any)[sortBy];
+      const bv = (b as any)[sortBy];
+      return sortBy === 'rs_rating' ? bv - av : (bv ?? 0) - (av ?? 0);
+    });
+  }, []);
+
+  const filteredHK = rsData ? applyRSFilter(rsData.results, hkSearch, hkMinRating, hkSort) : [];
+  const filteredUS = usRsData ? applyRSFilter(usRsData.results, usSearch, usMinRating, usSort) : [];
+
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 font-sans">
       {/* Header */}
@@ -262,7 +381,7 @@ export default function Dashboard() {
           <div>
             <h1 className="text-lg font-bold text-gray-100 flex items-center gap-2">
               <Activity className="text-cyan-400" size={20} />
-              港股 Screener
+              RS Screener
               <div className="flex items-center ml-4 bg-gray-800 rounded-lg p-0.5">
                 <button onClick={() => setActiveTab('screener')}
                   className={`px-3 py-1 rounded text-xs font-medium transition-all ${activeTab === 'screener' ? 'bg-cyan-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}>
@@ -273,8 +392,12 @@ export default function Dashboard() {
                   🚀🌙 MA信號
                 </button>
                 <button onClick={() => setActiveTab('rs')}
-                  className={`px-3 py-1 rounded text-xs font-medium transition-all ${activeTab === 'rs' ? 'bg-cyan-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}>
-                  📈 RS排名
+                  className={`px-3 py-1 rounded text-xs font-medium transition-all ${activeTab === 'rs' ? 'bg-amber-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}>
+                  🌏 港股RS
+                </button>
+                <button onClick={() => setActiveTab('us_rs')}
+                  className={`px-3 py-1 rounded text-xs font-medium transition-all ${activeTab === 'us_rs' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}>
+                  🇺🇸 美股RS
                 </button>
               </div>
             </h1>
@@ -292,31 +415,70 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-screen-2xl mx-auto px-4 py-4 space-y-4">
-        {/* Error */}
+
         {error && (
           <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">
             ⚠️ {error} — <button onClick={load} className="underline hover:no-underline">重試</button>
           </div>
         )}
 
-        {/* Stats */}
-        {data && <TopStats data={data} />}
-
-        {/* Chart */}
-        {data && data.results.length > 0 && (
-          <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4">
-            <div className="text-sm font-semibold text-gray-300 mb-3">📊 異動分數分佈（Top 20）</div>
-            <ScoreChart stocks={data.results} />
-          </div>
+        {/* ── 📊 異動分頁 ── */}
+        {activeTab === 'screener' && (
+          <>
+            {data && <TopStats data={data} />}
+            {data && data.results.length > 0 && (
+              <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4">
+                <div className="text-sm font-semibold text-gray-300 mb-3">📊 異動分數分佈（Top 20）</div>
+                <ScoreChart stocks={data.results} />
+              </div>
+            )}
+            {data && <FilterBar config={filters} onConfig={setFilters} />}
+            {loading && !data && (
+              <div className="flex items-center justify-center py-20 text-gray-500">
+                <RefreshCw size={24} className="animate-spin mr-3" />
+                <span>正在掃描港股市場...</span>
+              </div>
+            )}
+            {!loading && filtered.length === 0 && data && (
+              <div className="text-center py-20 text-gray-500">
+                <Activity size={40} className="mx-auto mb-3 opacity-30" />
+                <p>目前沒有符合篩選條件的股票</p>
+                <button onClick={() => setFilters({ minScore: 0, signals: [], sortBy: 'score' })}
+                  className="mt-2 text-cyan-400 text-sm hover:underline">清除篩選</button>
+              </div>
+            )}
+            {!loading && data && filtered.length > 0 && (
+              <div className="bg-gray-900/60 border border-gray-800 rounded-xl overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 py-3 text-center w-8">#</th>
+                      <th className="px-3 py-3 text-left">代碼</th>
+                      <th className="px-3 py-3 text-left">名稱</th>
+                      <th className="px-3 py-3 text-right">現價</th>
+                      <th className="px-3 py-3 text-center">升跌</th>
+                      <th className="px-3 py-3 text-left min-w-[120px]">Vol / 均量</th>
+                      <th className="px-3 py-3 text-center w-10">分</th>
+                      <th className="px-3 py-3 text-left">信號</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((stock, i) => (
+                      <StockRow key={stock.code} stock={stock} rank={i + 1} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="text-center text-xs text-gray-600 py-2">
+              {filtered.length} 支符合條件{data && ` · 耗時 ${data.elapsed.toFixed(1)}s`}
+            </div>
+          </>
         )}
 
-        {/* Filters */}
-        {data && <FilterBar config={filters} onConfig={setFilters} />}
-
-        {/* ── MA 信號分頁 ── */}
+        {/* ── 🚀🌙 MA信號分頁 ── */}
         {activeTab === 'signals' && signalsData && (
           <div className="space-y-4">
-            {/* 信號A/B 統計 */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-gray-900/60 border border-cyan-700/30 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-2">
@@ -338,7 +500,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 信號A 列表 */}
             {signalsData.signal_a.length > 0 && (
               <div className="bg-gray-900/60 border border-cyan-800/40 rounded-xl overflow-hidden">
                 <div className="px-4 py-2 border-b border-gray-800 text-cyan-400 text-sm font-semibold">
@@ -363,13 +524,9 @@ export default function Dashboard() {
                         <td className="px-3 py-2 font-mono text-cyan-400 text-sm">{stock.code}</td>
                         <td className="px-3 py-2 text-gray-100 text-sm">{stock.name}</td>
                         <td className="px-3 py-2 text-right font-semibold">HK${stock.price.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-center"><ChangePill pct={stock.change_pct} /></td>
                         <td className="px-3 py-2 text-center">
-                          <ChangePill pct={stock.change_pct} />
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">
-                            {stock.score}
-                          </span>
+                          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">{stock.score}</span>
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-1">
@@ -386,7 +543,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* 信號B 列表 */}
             {signalsData.signal_b.length > 0 && (
               <div className="bg-gray-900/60 border border-amber-800/40 rounded-xl overflow-hidden">
                 <div className="px-4 py-2 border-b border-gray-800 text-amber-400 text-sm font-semibold">
@@ -411,13 +567,9 @@ export default function Dashboard() {
                         <td className="px-3 py-2 font-mono text-amber-400 text-sm">{stock.code}</td>
                         <td className="px-3 py-2 text-gray-100 text-sm">{stock.name}</td>
                         <td className="px-3 py-2 text-right font-semibold">HK${stock.price.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-center"><ChangePill pct={stock.change_pct} /></td>
                         <td className="px-3 py-2 text-center">
-                          <ChangePill pct={stock.change_pct} />
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40">
-                            {stock.score}
-                          </span>
+                          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40">{stock.score}</span>
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-1">
@@ -443,169 +595,183 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── RS Ranking 分頁 ── */}
+        {/* ── 🌏 港股RS 分頁 ── */}
         {activeTab === 'rs' && rsData && (
           <div className="space-y-4">
-            {/* RS Rating 說明 */}
             <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4">
-              <div className="text-sm text-gray-300 font-semibold mb-1">📈 RS Rating（相對強度評分）</div>
+              <div className="text-sm text-gray-300 font-semibold mb-1">🌏 港股RS Rating（相對強度評分）</div>
               <div className="text-xs text-gray-500">
                 基準：恒生指數 · 計算：3M/6M/9M/12M ROC 加權 vs 大市 · 分數 0-99（越高越強）
               </div>
             </div>
 
-            {/* RS Top 20 圖表 */}
-            {rsData.results.length > 0 && (
-              <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4">
-                <div className="text-sm font-semibold text-gray-300 mb-3">🏆 RS Rating 分布（Top 30）</div>
-                <ResponsiveContainer width="100%" height={180}>
-                  <AreaChart
-                    data={rsData.results.slice(0, 30).map((s, i) => ({
-                      name: s.code,
-                      rating: s.rs_rating,
-                      change: s.change,
-                      rank: i + 1,
-                    }))}
-                    margin={{ top: 5, right: 10, left: -20, bottom: 0 }}
-                  >
-                    <defs>
-                      <linearGradient id="rsGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#6b7280' }} interval={0} angle={-30} textAnchor="end" />
-                    <YAxis domain={[0, 99]} tick={{ fontSize: 10, fill: '#6b7280' }} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }}
-                      labelStyle={{ color: '#9ca3af' }}
-                      formatter={(v: any, n: any) => [
-                        n === 'rating' ? `${v} 分` : `${Number(v).toFixed(2)}%`,
-                        n === 'rating' ? 'RS Rating' : '今日漲跌'
-                      ]}
-                    />
-                    <Area type="monotone" dataKey="rating" stroke="#f59e0b" fill="url(#rsGrad)" strokeWidth={2} name="rating" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            )}
+            <RSChart
+              data={rsData.results.slice(0, 30).map(s => ({ name: s.code, rating: s.rs_rating, change: s.change ?? 0 }))}
+              color="#f59e0b"
+              label="🏆 RS Rating 分布"
+            />
 
-            {/* RS Rating 表格 */}
-            <div className="bg-gray-900/60 border border-gray-800 rounded-xl overflow-hidden">
-              <div className="px-4 py-2 border-b border-gray-800 text-xs text-gray-500">
-                共 {rsData.total} 檔 · 耗時 {rsData.elapsed}s
+            <RSFilterBar
+              search={hkSearch} onSearch={setHkSearch}
+              minRating={hkMinRating} onMinRating={setHkMinRating}
+              sortBy={hkSort} onSortBy={setHkSort}
+            />
+
+            {filteredHK.length === 0 ? (
+              <div className="text-center py-16 text-gray-500">
+                <Activity size={40} className="mx-auto mb-3 opacity-30" />
+                <p>沒有符合條件的股票</p>
+                <button onClick={() => { setHkSearch(''); setHkMinRating(0); }}
+                  className="mt-2 text-cyan-400 text-sm hover:underline">清除篩選</button>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider">
-                      <th className="px-3 py-2 text-center w-8">#</th>
-                      <th className="px-3 py-2 text-left">代碼</th>
-                      <th className="px-3 py-2 text-left">名稱</th>
-                      <th className="px-3 py-2 text-right">現價</th>
-                      <th className="px-3 py-2 text-center">今日</th>
-                      <th className="px-3 py-2 text-center w-12">RS Rating</th>
-                      <th className="px-3 py-2 text-right">3M ROC</th>
-                      <th className="px-3 py-2 text-right">6M ROC</th>
-                      <th className="px-3 py-2 text-right">12M ROC</th>
-                      <th className="px-3 py-2 text-center">市值</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rsData.results.slice(0, 100).map((stock, i) => (
-                      <tr key={stock.code} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
-                        <td className="px-3 py-2 text-center text-gray-500 text-xs">{i + 1}</td>
-                        <td className="px-3 py-2 font-mono text-amber-400 text-sm font-semibold">{stock.code}</td>
-                        <td className="px-3 py-2 text-gray-100 text-sm">{stock.name}</td>
-                        <td className="px-3 py-2 text-right font-semibold">HK${stock.price.toFixed(2)}</td>
-                        <td className="px-3 py-2 text-center">
-                          <span className={`text-xs font-bold ${(stock.change ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {(stock.change ?? 0) > 0 ? '+' : ''}{(stock.change ?? 0).toFixed(2)}%
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-bold
-                            ${stock.rs_rating >= 90 ? 'bg-amber-500/30 text-amber-300 border border-amber-500/50' :
-                              stock.rs_rating >= 80 ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' :
-                              stock.rs_rating >= 70 ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40' :
-                              'bg-gray-700/50 text-gray-400 border border-gray-600/30'}`}>
-                            {stock.rs_rating}
-                          </span>
-                        </td>
-                        <td className={`px-3 py-2 text-right text-sm ${stock.roc_3m >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {stock.roc_3m > 0 ? '+' : ''}{stock.roc_3m.toFixed(1)}%
-                        </td>
-                        <td className={`px-3 py-2 text-right text-sm ${stock.roc_6m >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {stock.roc_6m > 0 ? '+' : ''}{stock.roc_6m.toFixed(1)}%
-                        </td>
-                        <td className={`px-3 py-2 text-right text-sm ${stock.roc_12m >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {stock.roc_12m > 0 ? '+' : ''}{stock.roc_12m.toFixed(1)}%
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${
-                            stock.mkt_label === '大' ? 'bg-blue-500/20 text-blue-400' :
-                            stock.mkt_label === '中' ? 'bg-purple-500/20 text-purple-400' :
-                            stock.mkt_label === '小' ? 'bg-pink-500/20 text-pink-400' :
-                            'bg-gray-700 text-gray-500'
-                          }`}>{stock.mkt_label}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            ) : (
+              <>
+                <div className="bg-gray-900/60 border border-gray-800 rounded-xl overflow-hidden">
+                  <div className="px-4 py-2 border-b border-gray-800 text-xs text-gray-500">
+                    共 {filteredHK.length} 檔 · 耗時 {rsData.elapsed}s
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider">
+                          <th className="px-3 py-2 text-center w-8">#</th>
+                          <th className="px-3 py-2 text-left">代碼</th>
+                          <th className="px-3 py-2 text-left">名稱</th>
+                          <th className="px-3 py-2 text-right">現價</th>
+                          <th className="px-3 py-2 text-center">今日</th>
+                          <th className="px-3 py-2 text-center w-12">RS Rating</th>
+                          <th className="px-3 py-2 text-right">3M ROC</th>
+                          <th className="px-3 py-2 text-right">6M ROC</th>
+                          <th className="px-3 py-2 text-right">12M ROC</th>
+                          <th className="px-3 py-2 text-center">市值</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredHK.map((stock, i) => (
+                          <tr key={stock.code} className={`border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors ${i < 3 ? 'bg-amber-500/5' : ''}`}>
+                            <td className="px-3 py-2 text-center text-gray-500 text-xs">{i + 1}</td>
+                            <td className="px-3 py-2 font-mono text-amber-400 text-sm font-semibold">{stock.code}</td>
+                            <td className="px-3 py-2 text-gray-100 text-sm">{stock.name}</td>
+                            <td className="px-3 py-2 text-right font-semibold">HK${stock.price.toFixed(2)}</td>
+                            <td className="px-3 py-2 text-center">
+                              <span className={`text-xs font-bold ${(stock.change ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {(stock.change ?? 0) > 0 ? '+' : ''}{(stock.change ?? 0).toFixed(2)}%
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-center"><RSRatingBadge rating={stock.rs_rating} /></td>
+                            <td className={`px-3 py-2 text-right text-sm ${stock.roc_3m >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {stock.roc_3m > 0 ? '+' : ''}{stock.roc_3m.toFixed(1)}%
+                            </td>
+                            <td className={`px-3 py-2 text-right text-sm ${stock.roc_6m >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {stock.roc_6m > 0 ? '+' : ''}{stock.roc_6m.toFixed(1)}%
+                            </td>
+                            <td className={`px-3 py-2 text-right text-sm ${stock.roc_12m >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {stock.roc_12m > 0 ? '+' : ''}{stock.roc_12m.toFixed(1)}%
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                stock.mkt_label === '大' ? 'bg-blue-500/20 text-blue-400' :
+                                stock.mkt_label === '中' ? 'bg-purple-500/20 text-purple-400' :
+                                stock.mkt_label === '小' ? 'bg-pink-500/20 text-pink-400' :
+                                'bg-gray-700 text-gray-500'
+                              }`}>{stock.mkt_label}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div className="text-center text-xs text-gray-600 py-1">
+                  {filteredHK.length} 檔 · 基準恒生指數 · {rsData.elapsed}s
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── 🇺🇸 美股RS 分頁 ── */}
+        {activeTab === 'us_rs' && usRsData && (
+          <div className="space-y-4">
+            <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4">
+              <div className="text-sm text-gray-300 font-semibold mb-1">🇺🇸 美股RS Rating（相對強度評分）</div>
+              <div className="text-xs text-gray-500">
+                基準：S&P 500 · 計算：3M/6M/9M/12M ROC 加權 vs 大市 · 分數 0-99 · {usRsData.total} 檔
               </div>
             </div>
+
+            <RSChart
+              data={usRsData.results.slice(0, 30).map(s => ({ name: s.code, rating: s.rs_rating, change: s.change }))}
+              color="#3b82f6"
+              label="🏆 RS Rating 分布"
+            />
+
+            <RSFilterBar
+              search={usSearch} onSearch={setUsSearch}
+              minRating={usMinRating} onMinRating={setUsMinRating}
+              sortBy={usSort} onSortBy={setUsSort}
+            />
+
+            {filteredUS.length === 0 ? (
+              <div className="text-center py-16 text-gray-500">
+                <Activity size={40} className="mx-auto mb-3 opacity-30" />
+                <p>沒有符合條件的股票</p>
+                <button onClick={() => { setUsSearch(''); setUsMinRating(0); }}
+                  className="mt-2 text-cyan-400 text-sm hover:underline">清除篩選</button>
+              </div>
+            ) : (
+              <>
+                <div className="bg-gray-900/60 border border-gray-800 rounded-xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider">
+                          <th className="px-3 py-2 text-center w-8">#</th>
+                          <th className="px-3 py-2 text-left">代碼</th>
+                          <th className="px-3 py-2 text-left">名稱</th>
+                          <th className="px-3 py-2 text-right">現價</th>
+                          <th className="px-3 py-2 text-center">今日</th>
+                          <th className="px-3 py-2 text-center w-12">RS Rating</th>
+                          <th className="px-3 py-2 text-right">3M ROC</th>
+                          <th className="px-3 py-2 text-right">6M ROC</th>
+                          <th className="px-3 py-2 text-right">12M ROC</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredUS.map((stock, i) => (
+                          <tr key={stock.code} className={`border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors ${i < 3 ? 'bg-amber-500/5' : ''}`}>
+                            <td className="px-3 py-2 text-center text-gray-500 text-xs">{i + 1}</td>
+                            <td className="px-3 py-2 font-mono text-amber-400 text-sm font-semibold">{stock.code}</td>
+                            <td className="px-3 py-2 text-gray-100 text-sm">{stock.name}</td>
+                            <td className="px-3 py-2 text-right font-semibold">${stock.price.toFixed(2)}</td>
+                            <td className="px-3 py-2 text-center">
+                              <span className={`text-xs font-bold ${stock.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {stock.change > 0 ? '+' : ''}{stock.change.toFixed(2)}%
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-center"><RSRatingBadge rating={stock.rs_rating} /></td>
+                            <td className={`px-3 py-2 text-right text-sm ${stock.roc_3m >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {stock.roc_3m > 0 ? '+' : ''}{stock.roc_3m.toFixed(1)}%
+                            </td>
+                            <td className={`px-3 py-2 text-right text-sm ${stock.roc_6m >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {stock.roc_6m > 0 ? '+' : ''}{stock.roc_6m.toFixed(1)}%
+                            </td>
+                            <td className={`px-3 py-2 text-right text-sm ${stock.roc_12m >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {stock.roc_12m > 0 ? '+' : ''}{stock.roc_12m.toFixed(1)}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div className="text-center text-xs text-gray-600 py-1">
+                  {filteredUS.length} 檔 · 基準 S&P 500 · {usRsData.elapsed.toFixed(1)}s
+                </div>
+              </>
+            )}
           </div>
         )}
-
-        {/* Table */}
-        {activeTab === 'screener' && loading && !data && (
-          <div className="flex items-center justify-center py-20 text-gray-500">
-            <RefreshCw size={24} className="animate-spin mr-3" />
-            <span>正在掃描港股市場...</span>
-          </div>
-        )}
-
-        {!loading && filtered.length === 0 && data && activeTab === 'screener' && (
-          <div className="text-center py-20 text-gray-500">
-            <Activity size={40} className="mx-auto mb-3 opacity-30" />
-            <p>目前沒有符合篩選條件的股票</p>
-            <button onClick={() => setFilters({ minScore: 0, signals: [], sortBy: 'score' })}
-              className="mt-2 text-cyan-400 text-sm hover:underline">清除篩選</button>
-          </div>
-        )}
-
-        {!loading && data && filtered.length > 0 && activeTab === 'screener' && (
-          <div className="bg-gray-900/60 border border-gray-800 rounded-xl overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider">
-                  <th className="px-3 py-3 text-center w-8">#</th>
-                  <th className="px-3 py-3 text-left">代碼</th>
-                  <th className="px-3 py-3 text-left">名稱</th>
-                  <th className="px-3 py-3 text-right">現價</th>
-                  <th className="px-3 py-3 text-center">升跌</th>
-                  <th className="px-3 py-3 text-left min-w-[120px]">Vol / 均量</th>
-                  <th className="px-3 py-3 text-center w-10">分</th>
-                  <th className="px-3 py-3 text-left">信號</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((stock, i) => (
-                  <StockRow key={stock.code} stock={stock} rank={i + 1} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div className="text-center text-xs text-gray-600 py-2">
-          {activeTab === 'screener'
-            ? `${filtered.length} 支符合條件`
-            : `🚀 ${signalsData?.total_a ?? 0} 支 | 🌙 ${signalsData?.total_b ?? 0} 支`
-          }
-          {data && ` · 耗時 ${data.elapsed.toFixed(1)}s`}
-        </div>
       </main>
     </div>
   );

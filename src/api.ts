@@ -1,4 +1,4 @@
-import type { ScreenerResponse, SignalsResponse, RSRankingResponse } from './types';
+import type { ScreenerResponse, SignalsResponse, RSRankingResponse, USRSRankingResponse } from './types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -16,6 +16,12 @@ export async function fetchSignals(): Promise<SignalsResponse> {
 
 export async function fetchRSRanking(): Promise<RSRankingResponse> {
   const res = await fetch(`${API_BASE}/api/rs-ranking`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchUSRSRanking(): Promise<USRSRankingResponse> {
+  const res = await fetch(`${API_BASE}/api/rs-ranking/us`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
 }

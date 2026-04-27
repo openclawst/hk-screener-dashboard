@@ -55,6 +55,21 @@ export interface RSStock {
   roc_12m: number;
   turnover_hkd: number;
   mkt_label: string;  // "大" | "中" | "小" | "—"
+
+  market?: string;    // "HK" | "US"
+}
+
+export interface USStock {
+  code: string;
+  name: string;
+  price: number;
+  change: number;
+  rs_rating: number;
+  rs_score: number;
+  roc_3m: number;
+  roc_6m: number;
+  roc_9m: number;
+  roc_12m: number;
 }
 
 export interface RSRankingResponse {
@@ -62,6 +77,14 @@ export interface RSRankingResponse {
   total: number;
   timestamp: string;
   elapsed: number;
+}
+
+export interface USRSRankingResponse {
+  results: USStock[];
+  total: number;
+  timestamp: string;
+  elapsed: number;
+  market: string;
 }
 
 export interface ScreenerConfig {
