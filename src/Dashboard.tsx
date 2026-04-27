@@ -463,7 +463,7 @@ export default function Dashboard() {
                     data={rsData.results.slice(0, 30).map((s, i) => ({
                       name: s.code,
                       rating: s.rs_rating,
-                      change: s.change_pct,
+                      change: s.change,
                       rank: i + 1,
                     }))}
                     margin={{ top: 5, right: 10, left: -20, bottom: 0 }}

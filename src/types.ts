@@ -46,7 +46,7 @@ export interface RSStock {
   code: string;
   name: string;
   price: number;
-  change_pct: number;
+  change: number;
   rs_rating: number;   // 0-99 相對強度評分
   rs_score: number;    // 原始超額回報分數
   roc_3m: number;
